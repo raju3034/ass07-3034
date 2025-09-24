@@ -1,0 +1,249 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>RideHail — Enhanced Demo (Animated Map + Mock Backend)</title>
+  <style>
+    :root{--bg:#071226;--card:#071629;--muted:#9aa6b2;--accent:#06b6d4;--accent2:#7c3aed;--success:#10b981;--danger:#ef4444;}
+    *{box-sizing:border-box}
+    body{margin:0;min-height:100vh;background:linear-gradient(180deg,#071022 0%, #061229 80%);color:#e8f2fb;font-family:Inter,system-ui,Segoe UI,Roboto,Arial}
+    .app{display:grid;grid-template-columns:420px 1fr;gap:20px;padding:28px;max-width:1200px;margin:24px auto}
+    .panel{background:linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));border-radius:14px;padding:18px;box-shadow:0 8px 40px rgba(2,6,23,0.6)}
+    h1{font-size:20px;margin:0 0 6px}
+    .muted{color:var(--muted);font-size:13px}
+    input,select{width:100%;padding:12px;border-radius:10px;border:1px solid rgba(255,255,255,0.04);background:transparent;color:inherit}
+    .form-row{display:flex;gap:10px;margin:12px 0}
+    button.primary{background:linear-gradient(90deg,var(--accent),var(--accent2));border:none;padding:12px 16px;border-radius:10px;color:#04212a;font-weight:700;cursor:pointer}
+    button.ghost{background:transparent;border:1px solid rgba(255,255,255,0.06);padding:10px;border-radius:10px;color:var(--muted);cursor:pointer}
+    .status{margin-top:12px;padding:12px;border-radius:10px;background:rgba(255,255,255,0.02);display:flex;align-items:center;gap:10px}
+    .drivers{margin-top:14px}
+    .driver{display:flex;justify-content:space-between;padding:10px;border-radius:8px;margin-bottom:8px;background:linear-gradient(90deg, rgba(255,255,255,0.012), rgba(255,255,255,0.01));align-items:center}
+    .driver small{color:var(--muted)}
+    .map{border-radius:14px;overflow:hidden;display:flex;flex-direction:column}
+    .map-top{padding:16px;background:linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));display:flex;justify-content:space-between;align-items:center}
+    .map-canvas{flex:1;background:linear-gradient(135deg,#06202b 0%,#041322 100%);position:relative;overflow:hidden}
+    .pin{width:18px;height:18px;border-radius:50%;position:absolute;transform:translate(-50%,-50%);display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700}
+    .pin.driver{background:linear-gradient(180deg, #fff, #ddd);color:#04212a;width:22px;height:22px;border-radius:6px;box-shadow:0 6px 18px rgba(2,6,23,0.6)}
+    .pin.user{background:#7c3aed;width:18px;height:18px}
+    .route{position:absolute;inset:0;pointer-events:none}
+    .notifications{padding:14px;max-height:220px;overflow:auto}
+    .note{padding:10px;margin-bottom:8px;border-radius:8px;background:rgba(255,255,255,0.02);border-left:4px solid rgba(255,255,255,0.03)}
+    .note.accept{border-left-color:var(--success)}
+    .note.cancel{border-left-color:var(--danger)}
+    .fare-pill{display:inline-flex;gap:8px;align-items:center;padding:8px;border-radius:999px;background:rgba(255,255,255,0.02);font-weight:700}
+    footer{margin-top:14px;color:var(--muted);font-size:13px;text-align:center}
+    /* subtle animations */
+    .fade-in{animation:fadeIn .45s ease both}
+    @keyframes fadeIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+    @media(max-width:900px){.app{grid-template-columns:1fr;padding:12px}}
+  </style>
+</head>
+<body>
+  <div class="app">
+    <div class="panel">
+      <h1>RideHail — Enhanced Demo</h1>
+      <div class="muted">Animated map · Mock backend (localStorage) · Observer / Strategy / Command</div>
+
+      <div style="margin-top:14px">
+        <label class="muted">Pickup</label>
+        <input id="pickup" value="MG Road, Bangalore" />
+        <label class="muted" style="margin-top:8px;display:block">Drop</label>
+        <input id="drop" value="Airport, Bangalore" />
+      </div>
+
+      <div class="form-row">
+        <select id="fareStrategy">
+          <option value="normal">Normal Fare</option>
+          <option value="surge">Surge Pricing</option>
+          <option value="discount">Discounted Ride</option>
+        </select>
+        <button class="primary" id="requestBtn">Request Ride</button>
+      </div>
+
+      <div class="status" id="status">
+        <div style="flex:1">
+          <div style="font-weight:700">No active booking</div>
+          <div class="muted" id="substatus">Choose pickup & drop, then request</div>
+        </div>
+        <div style="text-align:right">
+          <div class="fare-pill">Estimated: <span id="fare">—</span></div>
+        </div>
+      </div>
+
+      <div class="drivers" id="drivers">
+        <h3 style="margin:12px 0 8px">Nearby drivers</h3>
+      </div>
+
+      <div style="display:flex;gap:8px;margin-top:10px">
+        <button class="ghost" id="cancelBtn">Cancel Ride</button>
+        <button class="ghost" id="rateBtn">Rate Driver</button>
+      </div>
+
+      <footer>Demo — data saved in browser localStorage. Open multiple tabs to simulate another client.</footer>
+    </div>
+
+    <div class="map">
+      <div class="map-top panel">
+        <div>
+          <div style="font-weight:700">Live Map (simulated)</div>
+          <div class="muted">Driver movement and ETA animations</div>
+        </div>
+        <div>
+          <div class="muted">Booking state: <span id="stateShort">idle</span></div>
+        </div>
+      </div>
+
+      <div class="map-canvas" id="mapCanvas">
+        <!-- user pickup/drop pins -->
+        <div class="pin user" id="pickupPin" style="left:16%;top:40%">P</div>
+        <div class="pin user" id="dropPin" style="left:80%;top:60%">D</div>
+        <!-- drivers placeholder appended here -->
+        <svg class="route" id="routeSvg"></svg>
+      </div>
+
+      <div class="notifications panel">
+        <h4 style="margin:0 0 8px">Notifications</h4>
+        <div id="notes"></div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    /********************** ENHANCEMENTS ADDED **********************
+     * - Animated driver pins moving on map (setInterval) to simulate movement.
+     * - Mock backend persisted in localStorage: booking state survives reload and can be shared across tabs.
+     * - Improved UI notifications and fare display.
+     * - Patterns preserved: EventBus (Observer), Strategy (Fare), Command (Ride ops).
+     ***************************************************************/
+
+    /* ---------- Event Bus (Observer) ---------- */
+    class EventBus{ constructor(){ this.listeners = {}; window.addEventListener('storage', e=>{ // sync localStorage events across tabs
+        if(e.key==='rideh_demo_event' && e.newValue){ const payload = JSON.parse(e.newValue); this.emit(payload.event, payload.data); }
+      }); }
+      subscribe(event,fn){ (this.listeners[event]=this.listeners[event]||[]).push(fn); return ()=>this.unsubscribe(event,fn); }
+      unsubscribe(event,fn){ this.listeners[event]=(this.listeners[event]||[]).filter(x=>x!==fn); }
+      emit(event,payload){ (this.listeners[event]||[]).forEach(f=>f(payload)); // also persist for cross-tab
+        try{ localStorage.setItem('rideh_demo_event', JSON.stringify({event,data:payload,ts:Date.now()})); }catch(e){}
+      }
+    }
+    const bus = new EventBus();
+
+    /* ---------- Fare Strategies ---------- */
+    class FareStrategy{ calculate(km,min){return 0} }
+    class NormalFare extends FareStrategy{ calculate(km,min){return Math.round(40 + km*11 + Math.max(0,min-8)*0.6);} }
+    class SurgeFare extends FareStrategy{ constructor(m=1.7){super();this.m=m;} calculate(km,min){return Math.round((40 + km*11 + Math.max(0,min-8)*0.6)*this.m);} }
+    class DiscountFare extends FareStrategy{ constructor(p=25){super();this.p=p;} calculate(km,min){const base=40 + km*11 + Math.max(0,min-8)*0.6; return Math.round(base*(1-this.p/100)); } }
+    function getStrategy(name){ if(name==='normal')return new NormalFare(); if(name==='surge')return new SurgeFare(); return new DiscountFare(); }
+
+    /* ---------- Command Pattern ---------- */
+    class Command{ execute(){} }
+    class BookRideCommand extends Command{ constructor(controller,ride){super();this.controller=controller;this.ride=ride;} execute(){return this.controller._book(this.ride);} }
+    class CancelRideCommand extends Command{ constructor(controller){super();this.controller=controller;} execute(){return this.controller._cancel();} }
+    class RateRideCommand extends Command{ constructor(controller, rating){super();this.controller=controller;this.rating=rating;} execute(){return this.controller._rate(this.rating);} }
+    class Invoker{ constructor(){this.history=[];} run(cmd){const r=cmd.execute(); this.history.push(cmd); return r;} }
+    const invoker = new Invoker();
+
+    /* ---------- Mock backend + Controller ---------- */
+    const mockDrivers = [ {id:'D1',name:'Ravi',car:'Swift - KA01',pos:{x:12,y:45}}, {id:'D2',name:'Pooja',car:'Dzire - KA05',pos:{x:30,y:20}}, {id:'D3',name:'Arjun',car:'i20 - KA03',pos:{x:60,y:18}} ];
+
+    function saveState(state){ localStorage.setItem('rideh_state', JSON.stringify(state)); }
+    function loadState(){ try{ return JSON.parse(localStorage.getItem('rideh_state'))||null }catch(e){return null} }
+
+    class RideController{ constructor(bus){ this.bus=bus; this.activeRide = loadState()?.activeRide || null; if(this.activeRide) setTimeout(()=> this.bus.emit('ride:restored', this.activeRide),100); }
+      _book(ride){ // set active ride and persist
+        const newRide = Object.assign({id:'R'+Date.now(),status:'requested',pickup:ride.pickup,drop:ride.drop,fareStrategy:ride.fareStrategy,created:Date.now()}, {});
+        this.activeRide = newRide; saveState({activeRide:this.activeRide}); this.bus.emit('ride:requested',this.activeRide); this._simulateDrivers(newRide); return newRide;
+      }
+      _simulateDrivers(ride){ // drivers move and may accept
+        // try to accept by best ETA
+        const acceptanceTimer = setTimeout(()=>{
+          if(!this.activeRide || this.activeRide.status!=='requested') return;
+          const winner = mockDrivers[Math.floor(Math.random()*mockDrivers.length)];
+          this.activeRide.status='accepted'; this.activeRide.driver=winner; saveState({activeRide:this.activeRide}); this.bus.emit('ride:accepted',{ride:this.activeRide,driver:winner});
+          // simulate chance of driver cancel later
+          setTimeout(()=>{ if(Math.random()<0.18 && this.activeRide && this.activeRide.status==='accepted'){ const d=this.activeRide.driver; this.activeRide.status='cancelled_by_driver'; saveState({activeRide:null}); this.activeRide=null; this.bus.emit('ride:cancelled_by_driver',{ride:{id:ride.id},driver:d}); } }, 2500+Math.random()*5000);
+        }, 1200+Math.random()*1600);
+
+        // fallback: no drivers
+        setTimeout(()=>{ if(this.activeRide && this.activeRide.status==='requested'){ saveState({activeRide:null}); this.activeRide=null; this.bus.emit('ride:no_drivers',ride); } },6000);
+      }
+      _cancel(){ if(!this.activeRide) return null; const r=this.activeRide; this.activeRide=null; saveState({activeRide:null}); this.bus.emit('ride:cancelled_by_user',r); return r; }
+      _rate(rating){ if(!this.activeRide) return null; this.bus.emit('ride:rated',{ride:this.activeRide,rating}); return {ride:this.activeRide,rating}; }
+    }
+
+    const controller = new RideController(bus);
+
+    /* ---------- UI Wiring & Map Animation ---------- */
+    const notes = document.getElementById('notes');
+    const driversEl = document.getElementById('drivers');
+    const statusEl = document.getElementById('substatus');
+    const stateShort = document.getElementById('stateShort');
+    const fareEl = document.getElementById('fare');
+    const map = document.getElementById('mapCanvas');
+    const routeSvg = document.getElementById('routeSvg');
+
+    function appendNote(txt,cls=''){ const n=document.createElement('div'); n.className='note '+cls+' fade-in'; n.textContent=txt; notes.prepend(n); }
+
+    function renderDriversList(){ driversEl.innerHTML=''; mockDrivers.forEach(d=>{ const div=document.createElement('div'); div.className='driver'; div.innerHTML=`<div><strong>${d.name}</strong><div style="font-size:12px;color:var(--muted)">${d.car}</div></div><div><small>ETA: <span id="eta-${d.id}">${Math.max(2,Math.round(Math.random()*8))} min</span></small></div>`; driversEl.appendChild(div); }); }
+    renderDriversList();
+
+    // driver pins on map (DOM)
+    const driverPins = {};
+    function placeDriverPins(){ mockDrivers.forEach(d=>{ const pin = document.createElement('div'); pin.className='pin driver'; pin.id='pin-'+d.id; pin.style.left = d.pos.x+'%'; pin.style.top = d.pos.y+'%'; pin.textContent=d.name[0]; map.appendChild(pin); driverPins[d.id]= {el:pin, pos:{...d.pos}}; }); }
+    placeDriverPins();
+
+    // animate drivers slowly wandering and moving towards pickup when accepted
+    let animationTimer = setInterval(()=>{
+      mockDrivers.forEach(d=>{
+        // small random walk
+        if(!d._target){ d.pos.x = clamp(d.pos.x + (Math.random()-0.5)*3, 2, 94); d.pos.y = clamp(d.pos.y + (Math.random()-0.5)*3, 8, 88); }
+        const pin = document.getElementById('pin-'+d.id);
+        if(pin) { pin.style.left = d.pos.x + '%'; pin.style.top = d.pos.y + '%'; }
+      });
+    }, 800);
+
+    function clamp(v,a,b){ return Math.max(a,Math.min(b,v)); }
+
+    // Subscribe to events
+    bus.subscribe('ride:restored', (r)=>{ stateShort.textContent='restored'; statusEl.textContent='Restored active ride — waiting for driver updates'; appendNote('Restored active ride from storage'); updateFareUI(); });
+    bus.subscribe('ride:requested', (r)=>{ stateShort.textContent='requested'; statusEl.textContent='Searching for drivers...'; appendNote('Ride requested — searching drivers'); updateFareUI(); });
+    bus.subscribe('ride:accepted', ({ride,driver})=>{ stateShort.textContent='accepted'; statusEl.textContent = `Accepted by ${driver.name} — ${driver.car}`; appendNote(`${driver.name} accepted your ride`, 'accept'); highlightAcceptedDriver(driver); moveDriverToPickup(driver); fareEl.textContent = '₹'+estimateFare(ride.fareStrategy); });
+    bus.subscribe('ride:cancelled_by_driver', ({ride,driver})=>{ stateShort.textContent='driver_cancelled'; statusEl.textContent = `Driver ${driver.name} cancelled. Finding another driver...`; appendNote(`${driver.name} cancelled the booking`, 'cancel'); renderDriversList(); });
+    bus.subscribe('ride:no_drivers', (ride)=>{ stateShort.textContent='no_drivers'; statusEl.textContent = 'No drivers available — try again later'; appendNote('No drivers found'); fareEl.textContent='—'; });
+    bus.subscribe('ride:cancelled_by_user', (ride)=>{ stateShort.textContent='cancelled'; statusEl.textContent = 'You cancelled the ride'; appendNote('You cancelled the ride', 'cancel'); fareEl.textContent='—'; renderDriversList(); });
+    bus.subscribe('ride:rated', ({ride,rating})=>{ appendNote(`You rated ride ${ride.id} — ${rating}/5`, 'accept'); });
+
+    function highlightAcceptedDriver(driver){ // bump driver to top of list visually
+      mockDrivers.sort((a,b)=> a.id===driver.id? -1:0); renderDriversList(); }
+
+    function moveDriverToPickup(driver){ // simulate driver pin moving to pickup pin
+      const pin = document.getElementById('pin-'+driver.id);
+      if(!pin) return;
+      // set a target near pickupPin
+      const pickup = document.getElementById('pickupPin'); const rect = pickup.getBoundingClientRect(); const mapRect = map.getBoundingClientRect();
+      const targetX = ((rect.left - mapRect.left) / mapRect.width)*100; const targetY = ((rect.top - mapRect.top) / mapRect.height)*100;
+      // animate linear
+      const steps = 30; let step=0; const start = {...driver.pos}; const dx=(targetX-start.x)/steps; const dy=(targetY-start.y)/steps; const iv = setInterval(()=>{ if(step++>steps){ clearInterval(iv); return; } driver.pos.x += dx; driver.pos.y += dy; pin.style.left = driver.pos.x+'%'; pin.style.top = driver.pos.y+'%'; },80);
+    }
+
+    /* ---------- Fare helpers ---------- */
+    function estimateFare(strategyName){ const km=18.3; const min=34; return getStrategy(strategyName).calculate(km,min); }
+    function displayFare(){ return '₹'+estimateFare(document.getElementById('fareStrategy').value); }
+    document.getElementById('fareStrategy').addEventListener('change', ()=> fareEl.textContent = displayFare()); fareEl.textContent = displayFare();
+
+    /* ---------- UI actions (commands) ---------- */
+    document.getElementById('requestBtn').addEventListener('click', ()=>{
+      const ride = {pickup:document.getElementById('pickup').value, drop:document.getElementById('drop').value, fareStrategy:document.getElementById('fareStrategy').value};
+      const cmd = new BookRideCommand(controller, ride); invoker.run(cmd);
+    });
+    document.getElementById('cancelBtn').addEventListener('click', ()=>{ const cmd = new CancelRideCommand(controller); invoker.run(cmd); });
+    document.getElementById('rateBtn').addEventListener('click', ()=>{ const r = prompt('Rate your ride (1-5)'); const rating = Math.max(1,Math.min(5,Number(r)||5)); const cmd = new RateRideCommand(controller, rating); invoker.run(cmd); });
+
+    /* ---------- Helpers ---------- */
+    function updateFareUI(){ fareEl.textContent = displayFare(); }
+
+    appendNote('Welcome! You can open this demo in multiple tabs — actions sync via localStorage events.');
+  </script>
+</body>
+</html>
